@@ -1,0 +1,27 @@
+docker-compose -f ./sawtooth-lyq.yaml up -d;sleep 3s
+
+docker exec -it sawtooth-shell-default bash
+
+docker exec -it sawtooth-validator-default-0 bash
+
+docker stop $(docker ps -a -q) && docker rm $(docker ps -a -q)
+
+docker logs sawtooth-rest-api-default
+
+docker logs sawtooth-validator-default
+
+sawtooth settings list --url http://47.107.38.186:8008
+
+curl http://47.112.221.73:8008/peers
+
+curl http://localhost:8008/status
+
+node run-benchmark.js -c config-sawtooth.yaml -n sawtooth.json
+
+node run-benchmark.js -c config-smallbank-sawtooth.yaml -n sawtooth-smallbank-go.json
+
+docker-compose -f network/sawtooth/simplenetwork/sawtooth-simple.yaml up -d
+
+docker-compose -f ./sawtooth-default-poet-0.yaml up -d
+
+rm -rf sawtooth-default-poet-0.yaml && rm -rf sawtooth-default-poet-1.yaml && rm -rf sawtooth-default-poet-2.yaml && rm -rf sawtooth-default-poet-3.yaml

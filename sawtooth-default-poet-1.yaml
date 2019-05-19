@@ -1,0 +1,123 @@
+# Copyright 2018 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ------------------------------------------------------------------------------
+
+version: "2.1"
+
+volumes:
+  poet-shared:
+
+services:
+  smallbank-tp-go-1:
+    image: hyperledger/sawtooth-smallbank-tp-go:1.0
+    container_name: sawtooth-smallbank-tp-go-default-1
+    depends_on:
+      - validator-1
+    entrypoint: smallbank-tp-go -vvv -C tcp://47.107.70.181:4004
+
+  validator-1:
+    image: hyperledger/sawtooth-validator:1.0
+    container_name: sawtooth-validator-default-1
+    expose:
+      - 4004
+      - 5050
+      - 8800
+    ports:
+      - "4004:4004"
+      - "5050:5050"
+      - "8800:8800"
+    volumes:
+      - poet-shared:/poet-shared
+    command: |
+      bash -c "
+        sawadm keygen --force && \
+        mkdir -p /poet-shared/validator-1 || true && \
+        cp -a /etc/sawtooth/keys /poet-shared/validator-1/ && \
+        sawtooth-validator -vvv \
+            --bind network:tcp://0.0.0.0:8800 \
+            --bind component:tcp://0.0.0.0:4004 \
+            --bind consensus:tcp://0.0.0.0:5050 \
+            --endpoint tcp://47.107.70.181:8800 \
+            --peering dynamic \
+            --seeds tcp://47.112.221.9:8800 \
+            --scheduler serial \
+            --network-auth trust
+      "
+    environment:
+      PYTHONPATH: "/project/sawtooth-core/consensus/poet/common:\
+        /project/sawtooth-core/consensus/poet/simulator:\
+        /project/sawtooth-core/consensus/poet/core"
+    stop_signal: SIGKILL
+
+  rest-api-1:
+    image: hyperledger/sawtooth-rest-api:1.1
+    container_name: sawtooth-rest-api-default-1
+    expose:
+      - 8008
+    ports:
+      - "8008:8008"
+    command: |
+      bash -c "
+        sawtooth-rest-api -vvv\
+          --connect tcp://47.107.70.181:4004 \
+          --bind 0.0.0.0:8008
+      "
+    stop_signal: SIGKILL
+    depends_on:
+      - validator-1
+
+  intkey-tp-1:
+    image: hyperledger/sawtooth-intkey-tp-python:1.1
+    container_name: sawtooth-intkey-tp-python-default-1
+    expose:
+      - 4004
+    command: intkey-tp-python -C tcp://47.107.70.181:4004
+    stop_signal: SIGKILL
+    depends_on:
+      - validator-1
+
+  settings-tp-1:
+    image: hyperledger/sawtooth-settings-tp:1.1
+    container_name: sawtooth-settings-tp-default-1
+    expose:
+      - 4004
+    command: settings-tp -vv -C tcp://47.107.70.181:4004
+    stop_signal: SIGKILL
+    depends_on:
+      - validator-1
+
+  poet-engine-1:
+    image: hyperledger/sawtooth-poet-engine:1.1
+    container_name: sawtooth-poet-engine-1
+    depends_on:
+      - validator-1
+    volumes:
+      - poet-shared:/poet-shared
+    command: "bash -c \"\
+        while [ ! -f /poet-shared/validator-1/keys/validator.priv ]; do sleep 1; done && \
+        cp -a /poet-shared/validator-1/keys /etc/sawtooth && \
+        poet-engine -C tcp://47.107.70.181:5050 --component tcp://47.107.70.181:4004 \
+    \""
+
+  poet-validator-registry-tp-1:
+    image: hyperledger/sawtooth-poet-validator-registry-tp:1.1
+    container_name: sawtooth-poet-validator-registry-tp-1
+    expose:
+      - 4004
+    depends_on:
+      - validator-1
+    command: poet-validator-registry-tp -C tcp://47.107.70.181:4004
+    environment:
+      PYTHONPATH: /project/sawtooth-core/consensus/poet/common
+    stop_signal: SIGKILL
